@@ -25,7 +25,6 @@ import {
 } from '@/app/workspace/[workspaceId]/templates/components/template-card'
 import { getKeyboardShortcutText } from '@/app/workspace/[workspaceId]/w/hooks/use-keyboard-shortcuts'
 import { getAllBlocks } from '@/blocks'
-import { McpTools } from '@/components/mcp-tools'
 import { type NavigationSection, useSearchNavigation } from './hooks/use-search-navigation'
 import { getMcpTools } from '@/lib/mcp'
 import type { McpTool } from '@/lib/mcp'
@@ -322,6 +321,19 @@ export function SearchModal({
     return docs.filter((doc) => doc.name.toLowerCase().includes(query))
   }, [docs, searchQuery])
 
+  const groupedMcpTools = useMemo(() => {
+    return filteredMcpTools.reduce(
+      (acc, tool) => {
+        if (!acc[tool.server]) {
+          acc[tool.server] = []
+        }
+        acc[tool.server].push(tool)
+        return acc
+      },
+      {} as Record<string, McpTool[]>
+    )
+  }, [filteredMcpTools])
+
   // Create navigation sections for keyboard navigation
   const navigationSections = useMemo((): NavigationSection[] => {
     const sections: NavigationSection[] = []
@@ -336,15 +348,17 @@ export function SearchModal({
       })
     }
 
-    if (filteredMcpTools.length > 0) {
-      sections.push({
-        id: 'mcp-tools',
-        name: 'MCP Tools',
-        type: 'grid',
-        items: filteredMcpTools,
-        gridCols: filteredMcpTools.length,
-      })
-    }
+    Object.entries(groupedMcpTools).forEach(([serverName, serverTools]) => {
+      if (serverTools.length > 0) {
+        sections.push({
+          id: `mcp-tools-${serverName.replace(/\s+/g, '-')}`,
+          name: serverName,
+          type: 'grid',
+          items: serverTools,
+          gridCols: serverTools.length,
+        })
+      }
+    })
 
     if (filteredTools.length > 0) {
       sections.push({
@@ -694,17 +708,55 @@ export function SearchModal({
               )}
 
               {/* MCP Tools Section */}
-              {isOnWorkflowPage && (
-                <McpTools
-                  onToolClick={handleBlockClick}
-                  tools={filteredMcpTools}
-                  isLoading={mcpToolsLoading}
-                  isItemSelected={(index) => isItemSelected('mcp-tools', index)}
-                  scrollRef={(el) => {
-                    if (el) scrollRefs.current.set('mcp-tools', el)
-                  }}
-                />
-              )}
+              {isOnWorkflowPage &&
+                !mcpToolsLoading &&
+                Object.entries(groupedMcpTools).map(([serverName, serverTools]) => {
+                  const sectionId = `mcp-tools-${serverName.replace(/\s+/g, '-')}`
+                  return (
+                    <div key={serverName}>
+                      <h3 className='mb-3 ml-6 font-normal font-sans text-muted-foreground text-sm leading-none tracking-normal'>
+                        {serverName}
+                      </h3>
+                      <div
+                        ref={(el) => {
+                          if (el) scrollRefs.current.set(sectionId, el)
+                        }}
+                        className='scrollbar-none flex gap-2 overflow-x-auto px-6 pb-1'
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                      >
+                        {serverTools.map((tool, index) => (
+                          <button
+                            key={tool.id}
+                            onClick={() => handleBlockClick(tool.type)}
+                            data-nav-item={`${sectionId}-${index}`}
+                            className={`flex h-auto w-[180px] flex-shrink-0 cursor-pointer flex-col items-start gap-2 rounded-[8px] border p-3 transition-all duration-200 ${
+                              isItemSelected(sectionId, index)
+                                ? 'border-border bg-secondary/80'
+                                : 'border-border/40 bg-background/60 hover:border-border hover:bg-secondary/80'
+                            }`}
+                          >
+                            <div className='flex items-center gap-2'>
+                              <div
+                                className='flex h-5 w-5 items-center justify-center rounded-[4px]'
+                                style={{ backgroundColor: tool.bgColor }}
+                              >
+                                <tool.icon className='!h-3.5 !w-3.5 text-white' />
+                              </div>
+                              <span className='font-medium font-sans text-foreground text-sm leading-none tracking-normal'>
+                                {tool.name}
+                              </span>
+                            </div>
+                            {tool.description && (
+                              <p className='line-clamp-2 text-left text-muted-foreground text-xs'>
+                                {tool.description}
+                              </p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
 
               {/* Tools Section */}
               {filteredTools.length > 0 && (

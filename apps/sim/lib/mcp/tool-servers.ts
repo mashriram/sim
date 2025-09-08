@@ -2,12 +2,14 @@
 
 interface McpToolServer {
   name: string
-  command: string[]
+  command: string
+  args: string[]
 }
 
 export const mcpToolServers: McpToolServer[] = [
   {
     name: 'Time Server',
-    command: ['uvx', 'mcp-server-time', '--local-timezone=America/New_York'],
+    command: 'uvx',
+    args: ['mcp-server-time', '--local-timezone=America/New_York'],
   },
 ]

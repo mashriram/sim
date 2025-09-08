@@ -2,7 +2,11 @@
   "mcpServers": {
     "time": {
       "command": "uvx",
-      "args": ["mcp-server-time", "--local-timezone=America/New_York"]
+      "args": [
+        "mcp-server-time",
+        "--local-timezone=America/New_York"
+      ],
+      "url": "http://localhost:8001/openapi.json"
     }
   }
 }
