@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import ReactFlow, {
   Background,
   ConnectionLineType,
+  ConnectionMode,
   type Edge,
   type EdgeTypes,
   type NodeTypes,
@@ -1668,8 +1669,9 @@ const WorkflowContent = React.memo(() => {
           minZoom={0.1}
           maxZoom={1.3}
           panOnScroll
-          defaultEdgeOptions={{ type: 'custom' }}
+          defaultEdgeOptions={{ type: 'custom', animated: true }}
           proOptions={{ hideAttribution: true }}
+          connectionMode={ConnectionMode.Loose}
           connectionLineStyle={{
             stroke: '#94a3b8',
             strokeWidth: 2,
@@ -1693,8 +1695,8 @@ const WorkflowContent = React.memo(() => {
           onNodeDrag={effectivePermissions.canEdit ? onNodeDrag : undefined}
           onNodeDragStop={effectivePermissions.canEdit ? onNodeDragStop : undefined}
           onNodeDragStart={effectivePermissions.canEdit ? onNodeDragStart : undefined}
-          snapToGrid={false}
-          snapGrid={[20, 20]}
+          snapToGrid={true}
+          snapGrid={[15, 15]}
           elevateEdgesOnSelect={true}
           elevateNodesOnSelect={true}
           autoPanOnConnect={effectivePermissions.canEdit}

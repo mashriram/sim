@@ -67,6 +67,7 @@ export const AgentBlock: BlockConfig<AgentResponse> = {
     'Create powerful AI agents using any LLM provider with customizable system prompts and tool integrations.',
   docsLink: 'https://docs.sim.ai/blocks/agent',
   category: 'blocks',
+  subCategory: 'AI',
   bgColor: 'var(--brand-primary-hover-hex)',
   icon: AgentIcon,
   subBlocks: [
@@ -148,6 +149,14 @@ Create a system prompt appropriately detailed for the request, using clear langu
       type: 'short-input',
       layout: 'full',
       placeholder: 'Connect memory block output...',
+      mode: 'advanced',
+    },
+    {
+      id: 'enableMemory',
+      title: 'Enable Conversation Memory',
+      description: 'Enable short-term memory for multi-step reasoning within this agent execution.',
+      type: 'switch',
+      layout: 'full',
       mode: 'advanced',
     },
     {
@@ -473,6 +482,7 @@ Example 3 (Array Input):
     systemPrompt: { type: 'string', description: 'Initial system instructions' },
     userPrompt: { type: 'string', description: 'User message or context' },
     memories: { type: 'json', description: 'Agent memory data' },
+    enableMemory: { type: 'boolean', description: 'Enable short-term memory' },
     model: { type: 'string', description: 'AI model to use' },
     apiKey: { type: 'string', description: 'Provider API key' },
     azureEndpoint: { type: 'string', description: 'Azure OpenAI endpoint URL' },

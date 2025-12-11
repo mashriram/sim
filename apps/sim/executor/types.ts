@@ -101,6 +101,7 @@ export interface BlockState {
  */
 export interface ExecutionContext {
   workflowId: string // Unique identifier for this workflow execution
+  userId?: string // User ID for auth/permissions
   workspaceId?: string // Workspace ID for file storage scoping
   executionId?: string // Unique execution ID for file storage scoping
   blockStates: Map<string, BlockState>
