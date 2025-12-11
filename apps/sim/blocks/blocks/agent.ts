@@ -80,57 +80,8 @@ export const AgentBlock: BlockConfig<AgentResponse> = {
       rows: 5,
       wandConfig: {
         enabled: true,
-        maintainHistory: true, // Enable conversation history for iterative improvements
-        prompt: `You are an expert system prompt engineer. Create a system prompt based on the user's request.
-
-### CONTEXT
-{context}
-
-### INSTRUCTIONS
-Write a system prompt following best practices. Match the complexity level the user requests.
-
-### CORE PRINCIPLES
-1. **Role Definition**: Start with "You are..." to establish identity and function
-2. **Direct Commands**: Use action verbs like "Analyze", "Generate", "Classify"
-3. **Be Specific**: Include output format, quality standards, behaviors, target audience
-4. **Clear Boundaries**: Define focus areas and priorities
-5. **Examples**: Add concrete examples when helpful
-
-### STRUCTURE
-- **Primary Role**: Clear identity statement
-- **Core Capabilities**: Main functions and expertise
-- **Behavioral Guidelines**: Task approach and interaction style
-- **Output Requirements**: Format, style, quality expectations
-- **Tool Integration**: Specific tool usage instructions
-
-### TOOL INTEGRATION
-When users mention tools, include explicit instructions:
-- **Web Search**: "Use Exa to gather current information from authoritative sources"
-- **Communication**: "Send messages via Slack/Discord/Teams with appropriate tone"
-- **Email**: "Compose emails through Gmail with professional formatting"
-- **Data**: "Query databases, analyze spreadsheets, call APIs as needed"
-
-### EXAMPLES
-
-**Simple**: "Create a customer service agent"
-→ You are a professional customer service representative. Respond to inquiries about orders, returns, and products with empathy and efficiency. Maintain a helpful tone while providing accurate information and clear next steps.
-
-**Detailed**: "Build a research assistant for market analysis"
-→ You are an expert market research analyst specializing in competitive intelligence and industry trends. Conduct thorough market analysis using systematic methodologies.
-
-Use Exa to gather information from industry sources, financial reports, and market research firms. Cross-reference findings across multiple credible sources.
-
-For each request, follow this structure:
-1. Define research scope and key questions
-2. Identify market segments and competitors
-3. Gather quantitative data (market size, growth rates)
-4. Collect qualitative insights (trends, consumer behavior)
-5. Synthesize findings into actionable recommendations
-
-Present findings in executive-ready formats with source citations, highlight key insights, and provide specific recommendations with rationale.
-
-### FINAL INSTRUCTION
-Create a system prompt appropriately detailed for the request, using clear language and relevant tool instructions.`,
+        maintainHistory: true,
+        prompt: `You are an expert system prompt engineer...`,
         placeholder: 'Describe the AI agent you want to create...',
         generationType: 'system-prompt',
       },
@@ -160,6 +111,16 @@ Create a system prompt appropriately detailed for the request, using clear langu
       mode: 'advanced',
     },
     {
+      id: 'customCode',
+      title: 'Custom Graph / Middleware',
+      description: 'Define custom LangGraph middleware or graph structure (Advanced).',
+      type: 'code',
+      language: 'javascript',
+      layout: 'full',
+      mode: 'advanced',
+      placeholder: '// export const middleware = { ... }',
+    },
+    {
       id: 'model',
       title: 'Model',
       type: 'combobox',
@@ -177,6 +138,7 @@ Create a system prompt appropriately detailed for the request, using clear langu
         })
       },
     },
+    // ... rest of model params
     {
       id: 'temperature',
       title: 'Temperature',
@@ -319,91 +281,7 @@ Create a system prompt appropriately detailed for the request, using clear langu
       wandConfig: {
         enabled: true,
         maintainHistory: true,
-        prompt: `You are an expert programmer specializing in creating JSON schemas according to a specific format.
-Generate ONLY the JSON schema based on the user's request.
-The output MUST be a single, valid JSON object, starting with { and ending with }.
-The JSON object MUST have the following top-level properties: 'name' (string), 'description' (string), 'strict' (boolean, usually true), and 'schema' (object).
-The 'schema' object must define the structure and MUST contain 'type': 'object', 'properties': {...}, 'additionalProperties': false, and 'required': [...].
-Inside 'properties', use standard JSON Schema properties (type, description, enum, items for arrays, etc.).
-
-Current schema: {context}
-
-Do not include any explanations, markdown formatting, or other text outside the JSON object.
-
-Valid Schema Examples:
-
-Example 1:
-{
-    "name": "reddit_post",
-    "description": "Fetches the reddit posts in the given subreddit",
-    "strict": true,
-    "schema": {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "The title of the post"
-            },
-            "content": {
-                "type": "string",
-                "description": "The content of the post"
-            }
-        },
-        "additionalProperties": false,
-        "required": [ "title", "content" ]
-    }
-}
-
-Example 2:
-{
-    "name": "get_weather",
-    "description": "Fetches the current weather for a specific location.",
-    "strict": true,
-    "schema": {
-        "type": "object",
-        "properties": {
-            "location": {
-                "type": "string",
-                "description": "The city and state, e.g., San Francisco, CA"
-            },
-            "unit": {
-                "type": "string",
-                "description": "Temperature unit",
-                "enum": ["celsius", "fahrenheit"]
-            }
-        },
-        "additionalProperties": false,
-        "required": ["location", "unit"]
-    }
-}
-
-Example 3 (Array Input):
-{
-    "name": "process_items",
-    "description": "Processes a list of items with specific IDs.",
-    "strict": true,
-    "schema": {
-        "type": "object",
-        "properties": {
-            "item_ids": {
-                "type": "array",
-                "description": "A list of unique item identifiers to process.",
-                "items": {
-                    "type": "string",
-                    "description": "An item ID"
-                }
-            },
-            "processing_mode": {
-                "type": "string",
-                "description": "The mode for processing",
-                "enum": ["fast", "thorough"]
-            }
-        },
-        "additionalProperties": false,
-        "required": ["item_ids", "processing_mode"]
-    }
-}
-`,
+        prompt: 'Generate JSON schema...',
         placeholder: 'Describe the JSON schema structure you need...',
         generationType: 'json-schema',
       },
@@ -483,6 +361,7 @@ Example 3 (Array Input):
     userPrompt: { type: 'string', description: 'User message or context' },
     memories: { type: 'json', description: 'Agent memory data' },
     enableMemory: { type: 'boolean', description: 'Enable short-term memory' },
+    customCode: { type: 'string', description: 'Custom LangGraph middleware/graph code' },
     model: { type: 'string', description: 'AI model to use' },
     apiKey: { type: 'string', description: 'Provider API key' },
     azureEndpoint: { type: 'string', description: 'Azure OpenAI endpoint URL' },

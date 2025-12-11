@@ -38,7 +38,7 @@ function areDependenciesMet(
 }
 
 // Shared execution logic
-async function executeWorkflowLoop(
+export async function executeWorkflowLoop(
     workflowDefinition: SerializedWorkflow,
     input: any,
     contextData: any,
@@ -52,14 +52,8 @@ async function executeWorkflowLoop(
     const startTime = Date.now();
 
     const starter = workflowDefinition.blocks.find(b => b.metadata?.id === 'starter' || (triggerType === 'webhook' && b.config.params?.triggerMode));
-    // For webhooks, we might start at a specific block if provided, or find the trigger block.
-    // If input has 'blockId', we use that.
-    // However, `runWorkflow` assumes 'starter' block.
-    // We should adapt based on trigger type.
 
     let startBlock = starter;
-    // If webhook, maybe finding the block that matches.
-    // But typically `input` is fed to the start block.
 
     if (!startBlock) {
         // Fallback for API workflows

@@ -2,8 +2,8 @@ import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
-import { StateGraph, END, MemorySaver } from '@langchain/langgraph';
-import { ToolNode } from '@langchain/langgraph/prebuilt';
+import { MemorySaver } from '@langchain/langgraph';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { AgentInputs } from '@/executor/handlers/agent/types';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
@@ -68,6 +68,8 @@ export function createLangChainTools(toolsInput: any[], context: any): DynamicSt
      let schema = z.any();
      try {
        if (t.schema) {
+         // Parameters are usually in t.schema.function.parameters for OpenAI style tools
+         // or t.schema itself
          const params = t.schema.function?.parameters || t.schema;
          schema = ensureZodObject(logger, params);
        }
@@ -95,58 +97,20 @@ export async function runLangGraphAgent(
   context: any
 ) {
   const model = getChatModel(inputs);
-
   const lcTools = createLangChainTools(tools || [], context);
 
-  let modelWithTools = model;
-  if (lcTools.length > 0 && typeof (model as any).bindTools === 'function') {
-      modelWithTools = (model as any).bindTools(lcTools);
-  }
-
-  // Define Graph State
-  const graphState = {
-    messages: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-      default: () => [],
-    }
-  };
-
-  const workflow = new StateGraph({
-    channels: graphState
-  });
-
-  // Define Nodes
-  const callModel = async (state: { messages: BaseMessage[] }) => {
-    const response = await modelWithTools.invoke(state.messages);
-    return { messages: [response] };
-  };
-
-  const toolNode = new ToolNode(lcTools);
-
-  workflow.addNode("agent", callModel);
-  workflow.addNode("tools", toolNode);
-
-  workflow.setEntryPoint("agent");
-
-  // Conditional edge to tools or end
-  workflow.addConditionalEdges(
-    "agent",
-    (state) => {
-      const lastMessage = state.messages[state.messages.length - 1] as AIMessage;
-      if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-        return "tools";
-      }
-      return END;
-    }
-  );
-
-  workflow.addEdge("tools", "agent");
-
-  // Compile with Checkpointer if configured (in-memory for now)
-  // This allows the agent to handle multi-step tool usage with memory
+  // Initialize Checkpointer (Memory)
   const checkpointer = (inputs as any).enableMemory ? new MemorySaver() : undefined;
 
-  const app = workflow.compile({ checkpointer });
+  // Use createReactAgent (LangGraph v1 Prebuilt)
+  // This automatically sets up the Agent -> Tool -> Agent loop with tool binding
+  const agent = createReactAgent({
+      llm: model,
+      tools: lcTools,
+      checkpointSaver: checkpointer,
+      // We can inject state modifier (system prompt) here
+      stateModifier: inputs.systemPrompt,
+  });
 
   // Initial messages
   const initialMessages: BaseMessage[] = [];
@@ -161,7 +125,9 @@ export async function runLangGraphAgent(
       });
   }
 
-  if (inputs.systemPrompt) initialMessages.push(new SystemMessage(inputs.systemPrompt));
+  // If system prompt is not handled by stateModifier (e.g. specialized layout), add it here
+  // But createReactAgent handles stateModifier as system prompt mostly.
+  // We'll trust stateModifier for system prompt.
 
   if (inputs.userPrompt) {
       const content = typeof inputs.userPrompt === 'string' ? inputs.userPrompt : JSON.stringify(inputs.userPrompt);
@@ -169,17 +135,21 @@ export async function runLangGraphAgent(
   }
 
   // Ensure there is at least one message
-  if (initialMessages.length === 0) {
+  if (initialMessages.length === 0 && !inputs.systemPrompt) {
       initialMessages.push(new HumanMessage("Hello"));
   }
 
   // Invoke with config
   // Thread ID required if checkpointer is used
-  const config = checkpointer ? { configurable: { thread_id: "default-thread" } } : undefined;
+  // We use workflowId or executionId as thread_id if available in context
+  const threadId = context.executionId || "default-thread";
+  const config = checkpointer ? { configurable: { thread_id: threadId } } : undefined;
 
-  const result = await app.invoke({ messages: initialMessages }, config);
+  const result = await agent.invoke({ messages: initialMessages }, config);
 
-  const lastMsg = result.messages[result.messages.length - 1];
+  // Result in createReactAgent is the final state
+  const messages = result.messages;
+  const lastMsg = messages[messages.length - 1];
 
   const usage = lastMsg.response_metadata?.tokenUsage || {};
 
@@ -191,7 +161,8 @@ export async function runLangGraphAgent(
         completion: usage.completionTokens || 0,
         total: usage.totalTokens || 0
     },
-    toolCalls: result.messages
+    // Extract tool calls from the conversation history
+    toolCalls: messages
         .filter((m: any) => m.tool_calls && m.tool_calls.length > 0)
         .flatMap((m: any) => m.tool_calls)
   };
