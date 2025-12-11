@@ -1,8 +1,6 @@
-import { tasks } from '@trigger.dev/sdk'
 import { and, eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 import { checkServerSideUsageLimits } from '@/lib/billing'
-import { env, isTruthy } from '@/lib/env'
 import { createLogger } from '@/lib/logs/console/logger'
 import {
   handleSlackChallenge,
@@ -23,8 +21,6 @@ export const runtime = 'nodejs'
 
 /**
  * Webhook Verification Handler (GET)
- *
- * Handles verification requests from webhook providers and confirms endpoint exists.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string }> }) {
   const requestId = crypto.randomUUID().slice(0, 8)
@@ -33,7 +29,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const path = (await params).path
     const url = new URL(request.url)
 
-    // Handle WhatsApp specific verification challenge
     const mode = url.searchParams.get('hub.mode')
     const token = url.searchParams.get('hub.verify_token')
     const challenge = url.searchParams.get('hub.challenge')
@@ -49,7 +44,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return whatsAppResponse
     }
 
-    // Verify webhook exists in database
     const webhooks = await db
       .select({
         webhook: webhook,
@@ -75,9 +69,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 /**
  * Webhook Payload Handler (POST)
- *
- * Processes incoming webhook payloads from all supported providers.
- * Fast acknowledgment with async processing for most providers except Airtable.
  */
 export async function POST(
   request: NextRequest,
@@ -104,14 +95,11 @@ export async function POST(
     return new NextResponse('Failed to read request body', { status: 400 })
   }
 
-  // Parse the body - handle both JSON and form-encoded payloads
   let body: any
   try {
-    // Check content type to handle both JSON and form-encoded payloads
     const contentType = request.headers.get('content-type') || ''
 
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      // GitHub sends form-encoded data with JSON in the 'payload' field
       const formData = new URLSearchParams(rawBody)
       const payloadString = formData.get('payload')
 
@@ -123,7 +111,6 @@ export async function POST(
       body = JSON.parse(payloadString)
       logger.debug(`[${requestId}] Parsed form-encoded GitHub webhook payload`)
     } else {
-      // Default to JSON parsing
       body = JSON.parse(rawBody)
       logger.debug(`[${requestId}] Parsed JSON webhook payload`)
     }
@@ -141,7 +128,6 @@ export async function POST(
     return new NextResponse('Invalid payload format', { status: 400 })
   }
 
-  // Handle Slack challenge
   const slackResponse = handleSlackChallenge(body)
   if (slackResponse) {
     return slackResponse
@@ -151,7 +137,6 @@ export async function POST(
   const path = (await params).path
   logger.info(`[${requestId}] Processing webhook request for path: ${path}`)
 
-  // Find webhook and associated workflow
   const webhooks = await db
     .select({
       webhook: webhook,
@@ -170,7 +155,6 @@ export async function POST(
   foundWebhook = webhooks[0].webhook
   foundWorkflow = webhooks[0].workflow
 
-  // Handle Microsoft Teams signature verification if needed
   if (foundWebhook.provider === 'microsoftteams') {
     const providerConfig = (foundWebhook.providerConfig as Record<string, any>) || {}
 
@@ -199,7 +183,6 @@ export async function POST(
     }
   }
 
-  // Handle generic webhook authentication if enabled
   if (foundWebhook.provider === 'generic') {
     const providerConfig = (foundWebhook.providerConfig as Record<string, any>) || {}
 
@@ -207,23 +190,18 @@ export async function POST(
       const configToken = providerConfig.token
       const secretHeaderName = providerConfig.secretHeaderName
 
-      // --- Token Validation ---
       if (configToken) {
         let isTokenValid = false
 
         if (secretHeaderName) {
-          // Check custom header (headers are case-insensitive)
           const headerValue = request.headers.get(secretHeaderName.toLowerCase())
           if (headerValue === configToken) {
             isTokenValid = true
           }
         } else {
-          // Check standard Authorization header (case-insensitive Bearer keyword)
           const authHeader = request.headers.get('authorization')
-
-          // Case-insensitive comparison for "Bearer" keyword
           if (authHeader?.toLowerCase().startsWith('bearer ')) {
-            const token = authHeader.substring(7) // Remove "Bearer " (7 characters)
+            const token = authHeader.substring(7)
             if (token === configToken) {
               isTokenValid = true
             }
@@ -246,9 +224,8 @@ export async function POST(
     }
   }
 
-  // --- PHASE 3: Rate limiting for webhook execution ---
+  // --- PHASE 3: Rate limiting ---
   try {
-    // Get user subscription for rate limiting
     const [subscriptionRecord] = await db
       .select({ plan: subscription.plan })
       .from(subscription)
@@ -257,13 +234,12 @@ export async function POST(
 
     const subscriptionPlan = (subscriptionRecord?.plan || 'free') as SubscriptionPlan
 
-    // Check async rate limits (webhooks are processed asynchronously)
     const rateLimiter = new RateLimiter()
     const rateLimitCheck = await rateLimiter.checkRateLimit(
       foundWorkflow.userId,
       subscriptionPlan,
       'webhook',
-      true // isAsync = true for webhook execution
+      true
     )
 
     if (!rateLimitCheck.allowed) {
@@ -273,27 +249,17 @@ export async function POST(
         resetAt: rateLimitCheck.resetAt,
       })
 
-      // Return 200 to prevent webhook provider retries, but indicate rate limit
       if (foundWebhook.provider === 'microsoftteams') {
-        // Microsoft Teams requires specific response format
         return NextResponse.json({
           type: 'message',
           text: 'Rate limit exceeded. Please try again later.',
         })
       }
 
-      // Simple error response for other providers (return 200 to prevent retries)
       return NextResponse.json({ message: 'Rate limit exceeded' }, { status: 200 })
     }
-
-    logger.debug(`[${requestId}] Rate limit check passed for webhook`, {
-      provider: foundWebhook.provider,
-      remaining: rateLimitCheck.remaining,
-      resetAt: rateLimitCheck.resetAt,
-    })
   } catch (rateLimitError) {
     logger.error(`[${requestId}] Error checking webhook rate limits:`, rateLimitError)
-    // Continue processing - better to risk rate limit bypass than fail webhook
   }
 
   // --- PHASE 4: Usage limit check ---
@@ -310,30 +276,20 @@ export async function POST(
         }
       )
 
-      // Return 200 to prevent webhook provider retries, but indicate usage limit exceeded
       if (foundWebhook.provider === 'microsoftteams') {
-        // Microsoft Teams requires specific response format
         return NextResponse.json({
           type: 'message',
           text: 'Usage limit exceeded. Please upgrade your plan to continue.',
         })
       }
 
-      // Simple error response for other providers (return 200 to prevent retries)
       return NextResponse.json({ message: 'Usage limit exceeded' }, { status: 200 })
     }
-
-    logger.debug(`[${requestId}] Usage limit check passed for webhook`, {
-      provider: foundWebhook.provider,
-      currentUsage: usageCheck.currentUsage,
-      limit: usageCheck.limit,
-    })
   } catch (usageError) {
     logger.error(`[${requestId}] Error checking webhook usage limits:`, usageError)
-    // Continue processing - better to risk usage limit bypass than fail webhook
   }
 
-  // --- PHASE 5: Queue webhook execution (trigger.dev or direct based on env) ---
+  // --- PHASE 5: Queue webhook execution (via Temporal) ---
   try {
     const payload = {
       webhookId: foundWebhook.id,
@@ -346,26 +302,14 @@ export async function POST(
       blockId: foundWebhook.blockId,
     }
 
-    const useTrigger = isTruthy(env.TRIGGER_DEV_ENABLED)
+    // Always use Temporal (Trigger.dev removed)
+    await executeWebhookJob(payload)
 
-    if (useTrigger) {
-      const handle = await tasks.trigger('webhook-execution', payload)
-      logger.info(
-        `[${requestId}] Queued webhook execution task ${handle.id} for ${foundWebhook.provider} webhook`
-      )
-    } else {
-      // Fire-and-forget direct execution to avoid blocking webhook response
-      void executeWebhookJob(payload).catch((error) => {
-        logger.error(`[${requestId}] Direct webhook execution failed`, error)
-      })
-      logger.info(
-        `[${requestId}] Queued direct webhook execution for ${foundWebhook.provider} webhook (Trigger.dev disabled)`
-      )
-    }
+    logger.info(
+      `[${requestId}] Started Temporal webhook workflow for ${foundWebhook.provider} webhook`
+    )
 
-    // Return immediate acknowledgment with provider-specific format
     if (foundWebhook.provider === 'microsoftteams') {
-      // Microsoft Teams requires specific response format
       return NextResponse.json({
         type: 'message',
         text: 'Sim',
@@ -376,9 +320,7 @@ export async function POST(
   } catch (error: any) {
     logger.error(`[${requestId}] Failed to queue webhook execution:`, error)
 
-    // Still return 200 to prevent webhook provider retries
     if (foundWebhook.provider === 'microsoftteams') {
-      // Microsoft Teams requires specific response format
       return NextResponse.json({
         type: 'message',
         text: 'Webhook processing failed',

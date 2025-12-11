@@ -9,6 +9,19 @@ export type PrimitiveValueType = 'string' | 'number' | 'boolean' | 'json' | 'arr
 // Block classification
 export type BlockCategory = 'blocks' | 'tools' | 'triggers'
 
+// Sub-categories for grouping in Marketplace
+export type BlockSubCategory =
+  | 'AI'
+  | 'Social'
+  | 'Communication'
+  | 'Productivity'
+  | 'Database'
+  | 'Development'
+  | 'Utility'
+  | 'Finance'
+  | 'Core'
+  | 'Other'
+
 // Valid generation types for AI assistance
 export type GenerationType =
   | 'javascript-function-body'
@@ -181,6 +194,8 @@ export interface BlockConfig<T extends ToolResponse = ToolResponse> {
   name: string
   description: string
   category: BlockCategory
+  subCategory?: BlockSubCategory // New field for Marketplace grouping
+  tags?: string[] // New field for search
   longDescription?: string
   docsLink?: string
   bgColor: string
