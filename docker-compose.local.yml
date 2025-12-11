@@ -22,6 +22,8 @@ services:
       - RESEND_API_KEY=${RESEND_API_KEY:-placeholder}
       - OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
       - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:3002}
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
     depends_on:
       db:
         condition: service_healthy
@@ -29,6 +31,8 @@ services:
         condition: service_completed_successfully
       realtime:
         condition: service_healthy
+      temporal:
+        condition: service_started
     healthcheck:
       test: ['CMD', 'wget', '--spider', '--quiet', 'http://127.0.0.1:3000']
       interval: 90s
@@ -62,6 +66,22 @@ services:
       retries: 3
       start_period: 10s
 
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-simstudio}
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      # Add other necessary env vars
+    depends_on:
+      temporal:
+        condition: service_started
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   migrations:
     build:
       context: .
@@ -90,6 +110,35 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.26.2
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_SEEDS=temporal
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+
+  temporal-ui:
+    image: temporalio/ui:2.33.3
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      temporal:
+        condition: service_started
 
 volumes:
   postgres_data:
