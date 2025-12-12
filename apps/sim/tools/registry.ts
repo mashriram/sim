@@ -129,6 +129,7 @@ import {
 import { qdrantFetchTool, qdrantSearchTool, qdrantUpsertTool } from '@/tools/qdrant'
 import { redditGetCommentsTool, redditGetPostsTool, redditHotPostsTool } from '@/tools/reddit'
 import { s3GetObjectTool } from '@/tools/s3'
+import { sendGridSendTool } from '@/tools/sendgrid'
 import { searchTool as serperSearch } from '@/tools/serper'
 import {
   sharepointCreatePageTool,
@@ -148,7 +149,6 @@ import {
 import { tavilyExtractTool, tavilySearchTool } from '@/tools/tavily'
 import { telegramMessageTool } from '@/tools/telegram'
 import { thinkingTool } from '@/tools/thinking'
-import { sendGridSendTool } from '@/tools/sendgrid'
 import { sendSMSTool } from '@/tools/twilio'
 import { typeformFilesTool, typeformInsightsTool, typeformResponsesTool } from '@/tools/typeform'
 import type { ToolConfig } from '@/tools/types'

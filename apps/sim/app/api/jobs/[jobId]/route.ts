@@ -1,13 +1,16 @@
-import { runs } from '@trigger.dev/sdk'
 import { eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createLogger } from '@/lib/logs/console/logger'
+import { getTemporalClient } from '@/lib/temporal/client'
 import { createErrorResponse } from '@/app/api/workflows/utils'
 import { db } from '@/db'
 import { apiKey as apiKeyTable } from '@/db/schema'
 
 const logger = createLogger('TaskStatusAPI')
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 export async function GET(
   request: NextRequest,
@@ -19,7 +22,6 @@ export async function GET(
   try {
     logger.debug(`[${requestId}] Getting status for task: ${taskId}`)
 
-    // Try session auth first (for web UI)
     const session = await getSession()
     let authenticatedUserId: string | null = session?.user?.id || null
 
@@ -42,69 +44,64 @@ export async function GET(
       return createErrorResponse('Authentication required', 401)
     }
 
-    // Fetch task status from Trigger.dev
-    const run = await runs.retrieve(taskId)
+    const client = await getTemporalClient()
+    const handle = client.workflow.getHandle(`execution-${taskId}`)
 
-    logger.debug(`[${requestId}] Task ${taskId} status: ${run.status}`)
+    let description
+    try {
+      description = await handle.describe()
+    } catch (e: any) {
+      if (e.code === 5 || e.message?.includes('not found')) {
+        return createErrorResponse('Task not found', 404)
+      }
+      throw e
+    }
 
-    // Map Trigger.dev status to our format
-    const statusMap = {
-      QUEUED: 'queued',
-      WAITING_FOR_DEPLOY: 'queued',
-      EXECUTING: 'processing',
-      RESCHEDULED: 'processing',
-      FROZEN: 'processing',
+    const statusMap: Record<string, string> = {
+      RUNNING: 'processing',
       COMPLETED: 'completed',
-      CANCELED: 'cancelled',
       FAILED: 'failed',
-      CRASHED: 'failed',
-      INTERRUPTED: 'failed',
-      SYSTEM_FAILURE: 'failed',
-      EXPIRED: 'failed',
-    } as const
+      CANCELLED: 'cancelled',
+      TERMINATED: 'failed',
+      TIMED_OUT: 'failed',
+      CONTINUED_AS_NEW: 'processing',
+    }
 
-    const mappedStatus = statusMap[run.status as keyof typeof statusMap] || 'unknown'
+    const mappedStatus = statusMap[description.status.name] || 'unknown'
 
-    // Build response based on status
     const response: any = {
       success: true,
       taskId,
       status: mappedStatus,
       metadata: {
-        startedAt: run.startedAt,
+        startedAt: description.startTime.toISOString(),
       },
     }
 
-    // Add completion details if finished
     if (mappedStatus === 'completed') {
-      response.output = run.output // This contains the workflow execution results
-      response.metadata.completedAt = run.finishedAt
-      response.metadata.duration = run.durationMs
+      // We need the result. For completed workflows, handle.result() returns it.
+      try {
+        const result = await handle.result()
+        response.output = result.outputs
+        response.metadata.completedAt = description.closeTime?.toISOString()
+      } catch (e) {
+        // Should not happen if status is completed
+      }
     }
 
-    // Add error details if failed
     if (mappedStatus === 'failed') {
-      response.error = run.error
-      response.metadata.completedAt = run.finishedAt
-      response.metadata.duration = run.durationMs
+      // Can we get error details?
+      response.error = 'Workflow execution failed'
+      response.metadata.completedAt = description.closeTime?.toISOString()
     }
 
-    // Add progress info if still processing
-    if (mappedStatus === 'processing' || mappedStatus === 'queued') {
-      response.estimatedDuration = 180000 // 3 minutes max from our config
+    if (mappedStatus === 'processing') {
+      response.estimatedDuration = 180000
     }
 
     return NextResponse.json(response)
   } catch (error: any) {
     logger.error(`[${requestId}] Error fetching task status:`, error)
-
-    if (error.message?.includes('not found') || error.status === 404) {
-      return createErrorResponse('Task not found', 404)
-    }
-
     return createErrorResponse('Failed to fetch task status', 500)
   }
 }
-
-// TODO: Implement task cancellation via Trigger.dev API if needed
-// export async function DELETE() { ... }

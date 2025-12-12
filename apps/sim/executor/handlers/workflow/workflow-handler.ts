@@ -1,10 +1,10 @@
+import { v4 as uuidv4 } from 'uuid'
 import { createLogger } from '@/lib/logs/console/logger'
+import { getTemporalClient } from '@/lib/temporal/client'
 import type { BlockOutput } from '@/blocks/types'
 import { BlockType } from '@/executor/consts'
 import type { BlockHandler, ExecutionContext, StreamingExecution } from '@/executor/types'
 import type { SerializedBlock } from '@/serializer/types'
-import { getTemporalClient } from '@/lib/temporal/client'
-import { v4 as uuidv4 } from 'uuid'
 
 const logger = createLogger('WorkflowBlockHandler')
 
@@ -61,41 +61,42 @@ export class WorkflowBlockHandler implements BlockHandler {
       // Start Child Workflow via Temporal Client
       // We assume context.userId is available (added in previous step)
       if (!context.userId) {
-          throw new Error("User ID missing in execution context");
+        throw new Error('User ID missing in execution context')
       }
 
       const handle = await client.start('runWorkflow', {
-          args: [{
-              workflowId,
-              userId: context.userId,
-              input: childWorkflowInput,
-              executionId: uuidv4() // Generate new execution ID for child
-          }],
-          taskQueue: 'workflow-execution-queue',
-          workflowId: `execution-${executionId}` // Use unique ID for Temporal
-      });
+        args: [
+          {
+            workflowId,
+            userId: context.userId,
+            input: childWorkflowInput,
+            executionId: uuidv4(), // Generate new execution ID for child
+          },
+        ],
+        taskQueue: 'workflow-execution-queue',
+        workflowId: `execution-${executionId}`, // Use unique ID for Temporal
+      })
 
       logger.info(`Started child workflow ${workflowId} (Temporal ID: ${handle.workflowId})`)
 
       // Wait for result
-      const result = await handle.result();
+      const result = await handle.result()
 
       WorkflowBlockHandler.executionStack.delete(executionId)
 
       if (result.status !== 'completed') {
-          throw new Error(`Child workflow execution failed: ${result.error || 'Unknown error'}`);
+        throw new Error(`Child workflow execution failed: ${result.error || 'Unknown error'}`)
       }
 
       // Map output
       return {
-          success: true,
-          childWorkflowName: workflowId, // Or fetch name if needed
-          result: result.outputs || {},
-          // We can try to fetch child trace spans if Temporal logs them somewhere accessible,
-          // but for now we rely on the main log.
-          // Since LoggingSession writes to DB, the child workflow logs are in DB under its executionId.
+        success: true,
+        childWorkflowName: workflowId, // Or fetch name if needed
+        result: result.outputs || {},
+        // We can try to fetch child trace spans if Temporal logs them somewhere accessible,
+        // but for now we rely on the main log.
+        // Since LoggingSession writes to DB, the child workflow logs are in DB under its executionId.
       }
-
     } catch (error: any) {
       logger.error(`Error executing child workflow ${workflowId}:`, error)
       const executionId = `${context.workflowId}_sub_${workflowId}_${block.id}`

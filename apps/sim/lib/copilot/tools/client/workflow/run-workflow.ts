@@ -1,11 +1,11 @@
 import { Loader2, MinusCircle, Play, XCircle } from 'lucide-react'
+import { v4 as uuidv4 } from 'uuid'
 import {
   BaseClientTool,
   type BaseClientToolMetadata,
   ClientToolCallState,
 } from '@/lib/copilot/tools/client/base-tool'
 import { createLogger } from '@/lib/logs/console/logger'
-import { executeWorkflowWithFullLogging } from '@/app/workspace/[workspaceId]/w/[workflowId]/lib/workflow-execution-utils'
 import { useExecutionStore } from '@/stores/execution/store'
 import { useWorkflowRegistry } from '@/stores/workflows/registry/store'
 
@@ -93,12 +93,30 @@ export class RunWorkflowClientTool extends BaseClientTool {
         executionId: this.toolCallId,
       })
 
-      const result = await executeWorkflowWithFullLogging({
-        workflowInput,
-        executionId: this.toolCallId,
+      const executionId = uuidv4()
+
+      const response = await fetch(`/api/workflows/${activeWorkflowId}/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Execution-Mode': 'sync',
+        },
+        body: JSON.stringify(workflowInput || {}),
       })
 
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Execution failed: ${response.status} ${errorText}`)
+      }
+
+      const result = await response.json()
+
       setIsExecuting(false)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Execution failed')
+      }
+
       logger.debug('Set isExecuting(false) and switching state to success')
       this.setState(ClientToolCallState.success)
 
@@ -107,6 +125,9 @@ export class RunWorkflowClientTool extends BaseClientTool {
         `Workflow execution completed. Started at: ${executionStartTime}`
       )
     } catch (error: any) {
+      const { setIsExecuting } = useExecutionStore.getState()
+      setIsExecuting(false)
+
       const message = error instanceof Error ? error.message : String(error)
       const failedDependency = typeof message === 'string' && /dependency/i.test(message)
       const status = failedDependency ? 424 : 500

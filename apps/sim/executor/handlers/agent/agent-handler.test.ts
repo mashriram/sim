@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { isHosted } from '@/lib/environment'
+import { runLangGraphAgent } from '@/lib/langchain/agent'
 import { getAllBlocks } from '@/blocks'
 import { BlockType } from '@/executor/consts'
 import { AgentBlockHandler } from '@/executor/handlers/agent/agent-handler'
-import type { ExecutionContext, StreamingExecution } from '@/executor/types'
-import { executeProviderRequest } from '@/providers'
+import type { ExecutionContext } from '@/executor/types'
 import { getProviderFromModel, transformBlockTool } from '@/providers/utils'
 import type { SerializedBlock, SerializedWorkflow } from '@/serializer/types'
 import { executeTool } from '@/tools'
-import { runLangGraphAgent } from '@/lib/langchain/agent'
 
 process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
 
@@ -146,10 +145,10 @@ describe('AgentBlockHandler', () => {
     })
 
     mockRunLangGraphAgent.mockResolvedValue({
-        content: 'Mocked response content',
-        model: 'mock-model',
-        tokens: { prompt: 10, completion: 20, total: 30 },
-        toolCalls: [],
+      content: 'Mocked response content',
+      model: 'mock-model',
+      tokens: { prompt: 10, completion: 20, total: 30 },
+      toolCalls: [],
     })
   })
 
@@ -208,9 +207,9 @@ describe('AgentBlockHandler', () => {
       const result = await handler.execute(mockBlock, inputs, mockContext)
 
       expect(mockRunLangGraphAgent).toHaveBeenCalledWith(
-          expect.anything(),
-          expect.anything(),
-          expect.anything()
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
       )
       expect(result).toEqual(expectedOutput)
     })

@@ -8,8 +8,8 @@ import { createLogger } from '@/lib/logs/console/logger'
 import { cn } from '@/lib/utils'
 import { useSubBlockValue } from '@/app/workspace/[workspaceId]/w/[workflowId]/components/workflow-block/components/sub-block/hooks/use-sub-block-value'
 import type { SubBlockConfig } from '@/blocks/types'
-import { useTagSelection } from '@/hooks/use-tag-selection'
 import { useCollaborativeWorkflow } from '@/hooks/use-collaborative-workflow'
+import { useTagSelection } from '@/hooks/use-tag-selection'
 
 const logger = createLogger('ShortInput')
 
@@ -42,40 +42,45 @@ function parseCurl(curlCommand: string) {
     if (args[0] === 'curl') startIndex = 1
 
     for (let i = startIndex; i < args.length; i++) {
-        const arg = args[i];
+      const arg = args[i]
 
-        if (arg.startsWith('http')) {
-            url = arg.replace(/^['"]|['"]$/g, '');
-            continue;
-        }
+      if (arg.startsWith('http')) {
+        url = arg.replace(/^['"]|['"]$/g, '')
+        continue
+      }
 
-        if (arg === '-X' || arg === '--request') {
-            if (i + 1 < args.length) {
-                method = args[i + 1].replace(/^['"]|['"]$/g, '').toUpperCase();
-                i++;
-            }
-        } else if (arg === '-H' || arg === '--header') {
-            if (i + 1 < args.length) {
-                const header = args[i + 1].replace(/^['"]|['"]$/g, '');
-                const [key, ...values] = header.split(':');
-                if (key && values.length > 0) {
-                    headers[key.trim()] = values.join(':').trim();
-                }
-                i++;
-            }
-        } else if (arg === '-d' || arg === '--data' || arg === '--data-raw' || arg === '--data-binary') {
-            if (i + 1 < args.length) {
-                body = args[i + 1].replace(/^['"]|['"]$/g, '');
-                if (method === 'GET') method = 'POST';
-                i++;
-            }
+      if (arg === '-X' || arg === '--request') {
+        if (i + 1 < args.length) {
+          method = args[i + 1].replace(/^['"]|['"]$/g, '').toUpperCase()
+          i++
         }
+      } else if (arg === '-H' || arg === '--header') {
+        if (i + 1 < args.length) {
+          const header = args[i + 1].replace(/^['"]|['"]$/g, '')
+          const [key, ...values] = header.split(':')
+          if (key && values.length > 0) {
+            headers[key.trim()] = values.join(':').trim()
+          }
+          i++
+        }
+      } else if (
+        arg === '-d' ||
+        arg === '--data' ||
+        arg === '--data-raw' ||
+        arg === '--data-binary'
+      ) {
+        if (i + 1 < args.length) {
+          body = args[i + 1].replace(/^['"]|['"]$/g, '')
+          if (method === 'GET') method = 'POST'
+          i++
+        }
+      }
     }
 
-    return { url, method, headers, body };
+    return { url, method, headers, body }
   } catch (e) {
-      console.error("Failed to parse cURL", e);
-      return null;
+    console.error('Failed to parse cURL', e)
+    return null
   }
 }
 
@@ -207,33 +212,33 @@ export function ShortInput({
 
   // Handle paste events to ensure long values are handled correctly
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pastedText = e.clipboardData.getData('text');
+    const pastedText = e.clipboardData.getData('text')
 
     // Check for cURL import
     if (config.allowCurlImport && pastedText.trim().startsWith('curl')) {
-        e.preventDefault();
-        const parsed = parseCurl(pastedText);
-        if (parsed && parsed.url) {
-            // Update this field (URL)
-            if (onChange) onChange(parsed.url);
-            else if (!isPreview) setStoreValue(parsed.url);
+      e.preventDefault()
+      const parsed = parseCurl(pastedText)
+      if (parsed?.url) {
+        // Update this field (URL)
+        if (onChange) onChange(parsed.url)
+        else if (!isPreview) setStoreValue(parsed.url)
 
-            // Update other fields if possible
-            // We assume sibling IDs: method, headers, body
-            if (parsed.method) collaborativeSetSubblockValue(blockId, 'method', parsed.method);
-            if (parsed.body) collaborativeSetSubblockValue(blockId, 'body', parsed.body);
-            if (Object.keys(parsed.headers).length > 0) {
-                // Convert headers to array of { key, value } if table format expected
-                // The API block uses a 'table' type for headers which likely expects an array of objects
-                // Or maybe a JSON object if we changed it. API block says 'columns: ["Key", "Value"]'.
-                // Table value usually: [{ key: 'K', value: 'V' }]?
-                // Let's check Table component or assume standard format.
-                // Assuming Array<{ Key: string, Value: string }> based on columns.
-                const headerArray = Object.entries(parsed.headers).map(([k, v]) => ({ Key: k, Value: v }));
-                collaborativeSetSubblockValue(blockId, 'headers', headerArray);
-            }
-            return;
+        // Update other fields if possible
+        // We assume sibling IDs: method, headers, body
+        if (parsed.method) collaborativeSetSubblockValue(blockId, 'method', parsed.method)
+        if (parsed.body) collaborativeSetSubblockValue(blockId, 'body', parsed.body)
+        if (Object.keys(parsed.headers).length > 0) {
+          // Convert headers to array of { key, value } if table format expected
+          // The API block uses a 'table' type for headers which likely expects an array of objects
+          // Or maybe a JSON object if we changed it. API block says 'columns: ["Key", "Value"]'.
+          // Table value usually: [{ key: 'K', value: 'V' }]?
+          // Let's check Table component or assume standard format.
+          // Assuming Array<{ Key: string, Value: string }> based on columns.
+          const headerArray = Object.entries(parsed.headers).map(([k, v]) => ({ Key: k, Value: v }))
+          collaborativeSetSubblockValue(blockId, 'headers', headerArray)
         }
+        return
+      }
     }
 
     // Let the paste happen normally if not cURL or failed to parse

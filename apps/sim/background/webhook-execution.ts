@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getTemporalClient } from '@/lib/temporal/client'
 import { createLogger } from '@/lib/logs/console/logger'
+import { getTemporalClient } from '@/lib/temporal/client'
 
 const logger = createLogger('TriggerWebhookExecution')
 
@@ -30,9 +30,9 @@ export async function executeWebhookJob(payload: WebhookExecutionPayload) {
   try {
     const client = await getTemporalClient()
     const handle = await client.start('runWebhookWorkflow', {
-        args: [{ payload, executionId }],
-        taskQueue: 'workflow-execution-queue',
-        workflowId: `execution-${executionId}`
+      args: [{ payload, executionId }],
+      taskQueue: 'workflow-execution-queue',
+      workflowId: `execution-${executionId}`,
     })
 
     logger.info(`[${requestId}] Started Temporal workflow ${handle.workflowId}`)
@@ -46,6 +46,6 @@ export async function executeWebhookJob(payload: WebhookExecutionPayload) {
 // Legacy task export - keeping it just in case, but it calls new logic
 // Ideally we remove this file's "worker" role and just export the function
 export const webhookExecution = {
-    id: 'webhook-execution',
-    run: async (payload: WebhookExecutionPayload) => executeWebhookJob(payload)
+  id: 'webhook-execution',
+  run: async (payload: WebhookExecutionPayload) => executeWebhookJob(payload),
 }

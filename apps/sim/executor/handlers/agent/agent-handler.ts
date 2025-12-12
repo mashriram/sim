@@ -1,20 +1,13 @@
-import { getEnv } from '@/lib/env'
 import { createLogger } from '@/lib/logs/console/logger'
 import { getAllBlocks } from '@/blocks'
 import type { BlockOutput } from '@/blocks/types'
 import { BlockType } from '@/executor/consts'
-import type {
-  AgentInputs,
-  Message,
-  StreamingConfig,
-  ToolInput,
-} from '@/executor/handlers/agent/types'
+import type { AgentInputs, ToolInput } from '@/executor/handlers/agent/types'
 import type { BlockHandler, ExecutionContext, StreamingExecution } from '@/executor/types'
 import { transformBlockTool } from '@/providers/utils'
 import type { SerializedBlock } from '@/serializer/types'
 import { executeTool } from '@/tools'
 import { getTool, getToolAsync } from '@/tools/utils'
-import { runLangGraphAgent } from '@/lib/langchain/agent'
 
 const logger = createLogger('AgentBlockHandler')
 
@@ -22,10 +15,6 @@ const DEFAULT_MODEL = 'gpt-4o'
 const DEFAULT_FUNCTION_TIMEOUT = 5000
 const CUSTOM_TOOL_PREFIX = 'custom_'
 
-/**
- * Helper function to collect runtime block outputs and name mappings
- * for tag resolution in custom tools and prompts
- */
 function collectBlockData(context: ExecutionContext): {
   blockData: Record<string, any>
   blockNameMapping: Record<string, string>
@@ -38,7 +27,6 @@ function collectBlockData(context: ExecutionContext): {
       blockData[id] = state.output
       const workflowBlock = context.workflow?.blocks?.find((b) => b.id === id)
       if (workflowBlock?.metadata?.name) {
-        // Map both the display name and normalized form
         blockNameMapping[workflowBlock.metadata.name] = id
         const normalized = workflowBlock.metadata.name.replace(/\s+/g, '').toLowerCase()
         blockNameMapping[normalized] = id
@@ -49,9 +37,6 @@ function collectBlockData(context: ExecutionContext): {
   return { blockData, blockNameMapping }
 }
 
-/**
- * Handler for Agent blocks that process LLM requests with optional tools.
- */
 export class AgentBlockHandler implements BlockHandler {
   canHandle(block: SerializedBlock): boolean {
     return block.metadata?.id === BlockType.AGENT
@@ -64,42 +49,70 @@ export class AgentBlockHandler implements BlockHandler {
   ): Promise<BlockOutput | StreamingExecution> {
     logger.info(`Executing agent block (LangGraph): ${block.id}`)
 
-    const formattedTools = await this.formatTools(inputs.tools || [], context)
-
-    // Add executeToolCallback to context for LangChain agent to call back
-    const contextWithCallback = {
-       ...context,
-       executeToolCallback: async (toolDef: any, input: any) => {
-          // Re-find the formatted tool to get code or other metadata if needed
-          // Or we can embed it in toolDef
-          if (toolDef.executeFunction) {
-              return await toolDef.executeFunction(input);
-          }
-          // Default behavior for standard tools?
-          // We probably need to map back to executeTool logic.
-          return `Executed ${toolDef.name}`;
-       }
-    };
-
     try {
-        const result = await runLangGraphAgent(inputs, formattedTools, contextWithCallback);
+      let result
 
-        return {
-            content: result.content,
-            model: result.model,
-            tokens: result.tokens,
-            toolCalls: {
-                list: (result.toolCalls || []).map((tc: any) => ({
-                    name: tc.name,
-                    input: tc.args,
-                    output: tc.output // If available
-                })),
-                count: result.toolCalls?.length || 0
+      if (typeof window === 'undefined') {
+        // Server Side
+        const formattedTools = await this.formatTools(inputs.tools || [], context)
+
+        const contextWithCallback = {
+          ...context,
+          executeToolCallback: async (toolDef: any, input: any) => {
+            if (toolDef.executeFunction) {
+              return await toolDef.executeFunction(input)
             }
-        };
+            // Fallback for standard tools logic if not wrapped in executeFunction
+            // (formatTools wraps them, so this should cover most cases)
+            return `Executed ${toolDef.name}`
+          },
+        }
+
+        // Dynamic import to avoid bundling LangGraph on client
+        const { runLangGraphAgent } = await import('@/lib/langchain/agent')
+        result = await runLangGraphAgent(inputs, formattedTools, contextWithCallback)
+      } else {
+        // Client Side: Call API
+        // We need to serialize the context properly
+        const contextData = {
+          workflowId: context.workflowId,
+          executionId: context.executionId,
+          userId: context.userId,
+          blockStates: context.blockStates ? Object.fromEntries(context.blockStates) : {},
+        }
+
+        const response = await fetch('/api/agent/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inputs,
+            contextData,
+          }),
+        })
+
+        if (!response.ok) {
+          const err = await response.json()
+          throw new Error(err.error || 'Agent execution failed on server')
+        }
+        result = await response.json()
+      }
+
+      return {
+        content: result.content,
+        model: result.model,
+        tokens: result.tokens,
+        toolCalls: {
+          list: (result.toolCalls || []).map((tc: any) => ({
+            name: tc.name,
+            input: tc.args,
+            output: tc.output,
+          })),
+          count: result.toolCalls?.length || 0,
+        },
+      }
     } catch (error: any) {
-        logger.error(`LangGraph execution failed: ${error}`);
-        throw error;
+      logger.error(`LangGraph execution failed: ${error}`)
+      throw error
     }
   }
 
@@ -127,11 +140,7 @@ export class AgentBlockHandler implements BlockHandler {
 
   private async createCustomTool(tool: ToolInput, context: ExecutionContext): Promise<any> {
     const userProvidedParams = tool.params || {}
-
-    // Import the utility function
     const { filterSchemaForLLM, mergeToolParameters } = await import('@/tools/params')
-
-    // Create schema excluding user-provided parameters
     const filteredSchema = filterSchemaForLLM(tool.schema.function.parameters, userProvidedParams)
 
     const toolId = `${CUSTOM_TOOL_PREFIX}${tool.title}`
@@ -149,10 +158,7 @@ export class AgentBlockHandler implements BlockHandler {
 
     if (tool.code) {
       base.executeFunction = async (callParams: Record<string, any>) => {
-        // Merge user-provided parameters with LLM-generated parameters
         const mergedParams = mergeToolParameters(userProvidedParams, callParams)
-
-        // Collect block outputs for tag resolution
         const { blockData, blockNameMapping } = collectBlockData(context)
 
         const result = await executeTool(
@@ -168,9 +174,9 @@ export class AgentBlockHandler implements BlockHandler {
             isCustomTool: true,
             _context: { workflowId: context.workflowId },
           },
-          false, // skipProxy
-          false, // skipPostProcess
-          context // execution context for file processing
+          false,
+          false,
+          context
         )
 
         if (!result.success) {

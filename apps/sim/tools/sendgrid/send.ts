@@ -66,7 +66,7 @@ export const sendGridSendTool: ToolConfig<SendGridSendParams> = {
       // SendGrid requires 'from' to be an object
       const fromObj = params.fromName
         ? { email: params.from, name: params.fromName }
-        : { email: params.from };
+        : { email: params.from }
 
       return {
         personalizations: [
@@ -87,29 +87,29 @@ export const sendGridSendTool: ToolConfig<SendGridSendParams> = {
   transformResponse: async (response) => {
     // SendGrid returns 202 Accepted on success with empty body usually
     if (response.status === 202 || response.status === 200) {
-        return {
-            success: true,
-            output: { message: 'Email queued for delivery' }
-        }
+      return {
+        success: true,
+        output: { message: 'Email queued for delivery' },
+      }
     }
 
     // If we get here, it's likely an error that wasn't caught by isErrorResponse
     // but usually non-2xx throws error in executeTool.
     // If it's a JSON response:
-    let data;
+    let data
     try {
-        data = await response.json();
+      data = await response.json()
     } catch (e) {
-        data = await response.text();
+      data = await response.text()
     }
 
     return {
-        success: true,
-        output: data
+      success: true,
+      output: data,
     }
   },
 
   outputs: {
-      message: { type: 'string', description: 'Status message' }
-  }
+    message: { type: 'string', description: 'Status message' },
+  },
 }

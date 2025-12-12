@@ -4,13 +4,22 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@/lib/auth'
 import { checkServerSideUsageLimits } from '@/lib/billing'
 import { createLogger } from '@/lib/logs/console/logger'
-import { createHttpResponseFromBlock, updateWorkflowRunCounts, workflowHasResponseBlock } from '@/lib/workflows/utils'
+import { getTemporalClient } from '@/lib/temporal/client'
+import {
+  createHttpResponseFromBlock,
+  updateWorkflowRunCounts,
+  workflowHasResponseBlock,
+} from '@/lib/workflows/utils'
 import { validateWorkflowAccess } from '@/app/api/workflows/middleware'
 import { createErrorResponse, createSuccessResponse } from '@/app/api/workflows/utils'
 import { db } from '@/db'
 import { subscription, userStats } from '@/db/schema'
-import { RateLimitError, RateLimiter, type SubscriptionPlan, type TriggerType } from '@/services/queue'
-import { getTemporalClient } from '@/lib/temporal/client'
+import {
+  RateLimitError,
+  RateLimiter,
+  type SubscriptionPlan,
+  type TriggerType,
+} from '@/services/queue'
 
 const logger = createLogger('WorkflowExecuteAPI')
 
@@ -75,24 +84,24 @@ async function executeWorkflow(workflow: any, requestId: string, input?: any): P
   try {
     runningExecutions.add(executionKey)
 
-    const client = await getTemporalClient();
+    const client = await getTemporalClient()
     const handle = await client.start('runWorkflow', {
-        args: [{ workflowId, userId: workflow.userId, input, executionId }],
-        taskQueue: 'workflow-execution-queue',
-        workflowId: `execution-${executionId}`
-    });
+      args: [{ workflowId, userId: workflow.userId, input, executionId }],
+      taskQueue: 'workflow-execution-queue',
+      workflowId: `execution-${executionId}`,
+    })
 
     // Wait for result since this is sync execution
-    const result = await handle.result();
+    const result = await handle.result()
 
     // Transform result to expected format
     const executionResult = {
-        success: result.status === 'completed',
-        output: result.outputs || {},
-        metadata: {
-            duration: 0, // We could calculate this from result if needed
-        }
-    };
+      success: result.status === 'completed',
+      output: result.outputs || {},
+      metadata: {
+        duration: 0, // We could calculate this from result if needed
+      },
+    }
 
     if (executionResult.success) {
       await updateWorkflowRunCounts(workflowId)
@@ -294,13 +303,13 @@ export async function POST(
         }
 
         // Use Temporal for Async
-        const executionId = uuidv4();
-        const client = await getTemporalClient();
+        const executionId = uuidv4()
+        const client = await getTemporalClient()
         const handle = await client.start('runWorkflow', {
-            args: [{ workflowId, userId: authenticatedUserId, input, executionId }],
-            taskQueue: 'workflow-execution-queue',
-            workflowId: `execution-${executionId}`
-        });
+          args: [{ workflowId, userId: authenticatedUserId, input, executionId }],
+          taskQueue: 'workflow-execution-queue',
+          workflowId: `execution-${executionId}`,
+        })
 
         logger.info(
           `[${requestId}] Started Temporal workflow ${handle.workflowId} for workflow ${workflowId}`

@@ -1,6 +1,5 @@
 import { Mail } from 'lucide-react'
 import type { BlockConfig } from '@/blocks/types'
-import type { SendGridSendParams } from '@/tools/sendgrid/send'
 
 export const SendGridBlock: BlockConfig<any> = {
   type: 'sendgrid',
