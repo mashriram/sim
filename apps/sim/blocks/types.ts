@@ -186,6 +186,8 @@ export interface SubBlockConfig {
   // Declarative dependency hints for cross-field clearing or invalidation
   // Example: dependsOn: ['credential'] means this field should be cleared when credential changes
   dependsOn?: string[]
+  // Allow cURL import feature for this input (ShortInput only)
+  allowCurlImport?: boolean
 }
 
 // Main block definition

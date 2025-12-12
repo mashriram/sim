@@ -85,7 +85,7 @@ export const sendSMSTool: ToolConfig<TwilioSendSMSParams, TwilioSMSBlockOutput> 
       formData.append('Body', params.message)
 
       const formDataString = formData.toString()
-      return { body: formDataString }
+      return formDataString
     },
   },
 

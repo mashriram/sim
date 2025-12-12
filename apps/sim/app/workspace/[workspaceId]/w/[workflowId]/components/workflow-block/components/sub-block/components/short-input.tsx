@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useSubBlockValue } from '@/app/workspace/[workspaceId]/w/[workflowId]/components/workflow-block/components/sub-block/hooks/use-sub-block-value'
 import type { SubBlockConfig } from '@/blocks/types'
 import { useTagSelection } from '@/hooks/use-tag-selection'
+import { useCollaborativeWorkflow } from '@/hooks/use-collaborative-workflow'
 
 const logger = createLogger('ShortInput')
 
@@ -24,6 +25,58 @@ interface ShortInputProps {
   isPreview?: boolean
   previewValue?: string | null
   disabled?: boolean
+}
+
+// Simple cURL parser
+function parseCurl(curlCommand: string) {
+  try {
+    const args = curlCommand.match(/"[^"]*"|'[^']*'|\S+/g) || []
+
+    let url = ''
+    let method = 'GET'
+    const headers: Record<string, string> = {}
+    let body = ''
+
+    // Skip 'curl'
+    let startIndex = 0
+    if (args[0] === 'curl') startIndex = 1
+
+    for (let i = startIndex; i < args.length; i++) {
+        const arg = args[i];
+
+        if (arg.startsWith('http')) {
+            url = arg.replace(/^['"]|['"]$/g, '');
+            continue;
+        }
+
+        if (arg === '-X' || arg === '--request') {
+            if (i + 1 < args.length) {
+                method = args[i + 1].replace(/^['"]|['"]$/g, '').toUpperCase();
+                i++;
+            }
+        } else if (arg === '-H' || arg === '--header') {
+            if (i + 1 < args.length) {
+                const header = args[i + 1].replace(/^['"]|['"]$/g, '');
+                const [key, ...values] = header.split(':');
+                if (key && values.length > 0) {
+                    headers[key.trim()] = values.join(':').trim();
+                }
+                i++;
+            }
+        } else if (arg === '-d' || arg === '--data' || arg === '--data-raw' || arg === '--data-binary') {
+            if (i + 1 < args.length) {
+                body = args[i + 1].replace(/^['"]|['"]$/g, '');
+                if (method === 'GET') method = 'POST';
+                i++;
+            }
+        }
+    }
+
+    return { url, method, headers, body };
+  } catch (e) {
+      console.error("Failed to parse cURL", e);
+      return null;
+  }
 }
 
 export function ShortInput({
@@ -59,6 +112,7 @@ export function ShortInput({
   const [activeSourceBlockId, setActiveSourceBlockId] = useState<string | null>(null)
 
   const emitTagSelection = useTagSelection(blockId, subBlockId)
+  const { collaborativeSetSubblockValue } = useCollaborativeWorkflow()
 
   // Get ReactFlow instance for zoom control
   const reactFlowInstance = useReactFlow()
@@ -153,8 +207,36 @@ export function ShortInput({
 
   // Handle paste events to ensure long values are handled correctly
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    // Let the paste happen normally
-    // Then ensure scroll positions are synced after the content is updated
+    const pastedText = e.clipboardData.getData('text');
+
+    // Check for cURL import
+    if (config.allowCurlImport && pastedText.trim().startsWith('curl')) {
+        e.preventDefault();
+        const parsed = parseCurl(pastedText);
+        if (parsed && parsed.url) {
+            // Update this field (URL)
+            if (onChange) onChange(parsed.url);
+            else if (!isPreview) setStoreValue(parsed.url);
+
+            // Update other fields if possible
+            // We assume sibling IDs: method, headers, body
+            if (parsed.method) collaborativeSetSubblockValue(blockId, 'method', parsed.method);
+            if (parsed.body) collaborativeSetSubblockValue(blockId, 'body', parsed.body);
+            if (Object.keys(parsed.headers).length > 0) {
+                // Convert headers to array of { key, value } if table format expected
+                // The API block uses a 'table' type for headers which likely expects an array of objects
+                // Or maybe a JSON object if we changed it. API block says 'columns: ["Key", "Value"]'.
+                // Table value usually: [{ key: 'K', value: 'V' }]?
+                // Let's check Table component or assume standard format.
+                // Assuming Array<{ Key: string, Value: string }> based on columns.
+                const headerArray = Object.entries(parsed.headers).map(([k, v]) => ({ Key: k, Value: v }));
+                collaborativeSetSubblockValue(blockId, 'headers', headerArray);
+            }
+            return;
+        }
+    }
+
+    // Let the paste happen normally if not cURL or failed to parse
     setTimeout(() => {
       if (inputRef.current && overlayRef.current) {
         overlayRef.current.scrollLeft = inputRef.current.scrollLeft

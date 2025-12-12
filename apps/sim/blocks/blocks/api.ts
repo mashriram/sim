@@ -18,8 +18,9 @@ export const ApiBlock: BlockConfig<RequestResponse> = {
       title: 'URL',
       type: 'short-input',
       layout: 'full',
-      placeholder: 'Enter URL',
+      placeholder: 'Enter URL (or paste cURL)',
       required: true,
+      allowCurlImport: true,
     },
     {
       id: 'method',

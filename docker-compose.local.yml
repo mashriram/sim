@@ -130,7 +130,7 @@ services:
       - ./docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
 
   temporal-ui:
-    image: temporalio/ui:2.33.3
+    image: temporalio/ui:2.33.0
     ports:
       - "8080:8080"
     environment:
